@@ -13,15 +13,10 @@ from scraper_logic import (
     prepare_base_url
 )
 
-# --- הגדרות אסטרטגיה ---
-# הורדנו את מספר העובדים במקביל. מהירות תושג ע"י תזמון נכון, לא בכוח גס.
 MAX_WORKERS = 4 
 MAX_ATTEMPTS_PER_URL = 3
-# מרווח מינימלי בין שליחת בקשות חדשות מהתור (בשניות). זה המפתח למניעת חסימה.
-# ערך של 0.25 מאפשר שליחת 4 בקשות בשנייה - קצב מהיר אך מבוקר.
 REQUEST_DISPATCH_INTERVAL = 0.25 
 ITEMS_PER_PAGE = 40
-# ----------------------------------------
 
 app = Flask(__name__)
 CORS(app)
@@ -30,10 +25,6 @@ app.config['OUTPUT_FOLDER'] = 'output'
 tasks = {}
 
 def scraping_worker(url: str, task_id: str):
-    """
-    Worker פשוט: מקבל URL, מנסה לשאוב אותו מספר פעמים, ומחזיר את התוצאה.
-    הוא אינו מנהל יותר את התזמון או ההמתנות.
-    """
     for attempt in range(MAX_ATTEMPTS_PER_URL):
         print(f"[{task_id}] Worker fetching {url} (Attempt {attempt + 1})...")
         soup, status_code = attempt_fetch_once(url)
@@ -41,23 +32,20 @@ def scraping_worker(url: str, task_id: str):
         if status_code == 200:
             return scrape_products_from_soup(soup)
         
-        # אם נחסמנו, נחזיר קוד מיוחד כדי שמנהל התור ידע להאט.
         if status_code == 429:
             print(f"[{task_id}] !!! RATE LIMIT HIT on {url}. Signaling dispatcher to slow down. !!!")
             return "RATE_LIMIT"
 
         print(f"[{task_id}] Worker for {url} failed with status {status_code}. Retrying after a short delay...")
-        time.sleep((attempt + 1) * 0.5) # המתנה קצרה וגדלה בין ניסיונות חוזרים
+        time.sleep((attempt + 1) * 0.5)
             
     print(f"[{task_id}] Worker failed to fetch {url} after {MAX_ATTEMPTS_PER_URL} attempts.")
     return []
-
 
 def run_scraping_task(base_url: str, task_id: str):
     try:
         tasks[task_id] = {'status': 'processing', 'progress': 'מאמת עמוד ראשי...'}
 
-        # ניסיון ראשוני להשגת העמוד הראשון וקביעת מספר העמודים
         first_page_soup, status = None, 0
         for i in range(MAX_ATTEMPTS_PER_URL):
             soup, status = attempt_fetch_once(f"{base_url}page=1")
@@ -78,59 +66,43 @@ def run_scraping_task(base_url: str, task_id: str):
         print(f"[{task_id}] Task started: Found {total_items} items across {total_pages} pages.")
 
         all_products = []
-        # איסוף המוצרים מהעמוד הראשון שכבר הורדנו
         all_products.extend(scrape_products_from_soup(first_page_soup))
 
-        # --- ארכיטקטורת תור חדשה ---
         url_queue = queue.Queue()
-        # הכנסת כל שאר העמודים לתור
         for i in range(2, total_pages + 1):
             url_queue.put(f"{base_url}page={i}")
 
         processed_count = 1
         tasks[task_id]['progress'] = f'מעבד... {processed_count}/{total_pages} עמודים טופלו.'
 
-        # שימוש ב-ThreadPoolExecutor לביצוע העבודה
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             futures = []
-            
-            # וסת קצב דינמי
             current_dispatch_interval = REQUEST_DISPATCH_INTERVAL
 
             while not url_queue.empty() or futures:
-                # שלח משימות חדשות רק אם יש מקום ב-Executor והתור לא ריק
                 if not url_queue.empty() and len(futures) < MAX_WORKERS:
                     url_to_scrape = url_queue.get()
-                    # הגשת המשימה ל-Executor
                     future = executor.submit(scraping_worker, url_to_scrape, task_id)
                     futures.append(future)
-                    # המתנה קצרה ומבוקרת לפני שליחת הבקשה הבאה
                     time.sleep(current_dispatch_interval)
 
-                # בדיקת משימות שהסתיימו
                 completed_futures = [f for f in futures if f.done()]
                 for future in completed_futures:
                     result = future.result()
                     
-                    # אם נתקלנו בחסימה, נאט את קצב שליחת הבקשות
                     if isinstance(result, str) and result == "RATE_LIMIT":
-                         current_dispatch_interval *= 1.5 # האטה אקספוננציאלית
+                         current_dispatch_interval *= 1.5
                          print(f"[{task_id}] Dispatcher slowed down. New interval: {current_dispatch_interval:.2f}s")
-                         # את ה-URL שנכשל נחזיר לסוף התור לניסיון נוסף מאוחר יותר
-                         # (זהו שיפור אופציונלי אך מומלץ)
                     elif result:
                         all_products.extend(result)
-                        # אם הצלחנו, נחזור בהדרגה לקצב המקורי
                         current_dispatch_interval = max(REQUEST_DISPATCH_INTERVAL, current_dispatch_interval / 1.1)
 
                     processed_count += 1
                     tasks[task_id]['progress'] = f'מעבד... {processed_count-1}/{total_pages} עמודים טופלו.'
                     futures.remove(future)
                 
-                # מונע המתנה אקטיבית אם כל ה-workers תפוסים
                 if len(futures) == MAX_WORKERS:
                     time.sleep(0.1)
-
 
         if not all_products:
             raise ValueError("האיסוף הסתיים ללא מוצרים.")
@@ -151,7 +123,6 @@ def run_scraping_task(base_url: str, task_id: str):
         traceback.print_exc()
         tasks[task_id].update({'status': 'failed', 'progress': str(e)})
 
-# --- שאר קוד ה-Flask נשאר ללא שינוי ---
 @app.route('/scrape', methods=['POST'])
 def start_scrape():
     user_url = request.json.get('url')

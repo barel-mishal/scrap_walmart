@@ -11,4 +11,5 @@ dependencies = [
     "pandas>=2.3.0",
     "python-dotenv>=1.1.0",
     "requests>=2.32.4",
+    "selenium>=4.33.0",
 ]

@@ -2,15 +2,9 @@ import requests, re, json, time, random
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode, quote
 from bs4 import BeautifulSoup
 import os
-SCRAPE_DO_TOKEN = os.getenv("DATABASE_URL")
-
+SCRAPE_DO_TOKEN = os.getenv("SCRAPE_DO_TOKEN")
 
 def attempt_fetch_once(url: str):
-    """
-    שונתה: מבצעת ניסיון הורדה בודד ומדווחת על התוצאה.
-    מחזירה:元組 (soup, status_code)
-    status_code: 200 בהצלחה, קוד שגיאת HTTP בכישלון, 999 לשגיאת הגדרות, 0 לשגיאת רשת.
-    """
     try:
         if "YOUR_SCRAPE_DO_TOKEN" in SCRAPE_DO_TOKEN:
             print("[FATAL ERROR] The SCRAPE_DO_TOKEN has not been configured in scraper_logic.py!")
@@ -30,7 +24,6 @@ def attempt_fetch_once(url: str):
         print(f"--> Network Error on URL {url}: {e}")
         return None, 0
 
-# --- שאר הפונקציות נשארות ללא שינוי ---
 def find_total_items(soup: BeautifulSoup) -> int:
     try:
         script_tag = soup.find('script', {'id': '__NEXT_DATA__'})
