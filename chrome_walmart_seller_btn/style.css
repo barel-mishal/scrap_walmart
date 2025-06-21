@@ -1,0 +1,22 @@
+#export-csv-button {
+    display: block;
+    margin: 20px auto;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    background-color: #0071dc; /* Walmart Blue */
+    border: none;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#export-csv-button:hover {
+    background-color: #004c91;
+}
+
+#export-csv-button:disabled {
+    background-color: #a0a0a0;
+    cursor: not-allowed;
+}

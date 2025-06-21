@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Walmart Seller Exporter",
+  "version": "2.0",
+  "description": "Adds an 'Export to CSV' button to Walmart seller pages.",
+  "permissions": ["downloads"],
+  "host_permissions": ["http://127.0.0.1:5000/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.walmart.com/global/seller/*"],
+      "js": ["content.js"],
+      "css": ["style.css"]
+    }
+  ]
+}
