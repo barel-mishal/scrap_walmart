@@ -1,163 +1,360 @@
-use std::fs::File;
-use std::io::Write;
-use reqwest;
+use futures::stream::{self, StreamExt};
+use reqwest::header::{HeaderMap, USER_AGENT};
+use reqwest::{Client, Response};
 use scraper::{Html, Selector};
-use csv::Writer;
-use serde_json::Value;
-use tokio::time::{sleep, Duration}; // Import tokio's sleep functionality
+use serde::Deserialize;
+use std::fmt;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
+
+// --- Configuration ---
+const CONCURRENT_REQUESTS: usize = 10;   // Number of pages to scrape at the same time
+const REQUEST_DELAY_MS: u64 = 500;       // Polite delay between batches of requests
+const MAX_RETRIES: u32 = 3;              // NEW: Max number of retries for a failed request
+const RETRY_DELAY_MS: u64 = 500;         // NEW: Initial delay for retries (will double each time)
+
+// --- Structs for Deserializing JSON data ---
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Product {
+    name: String,
+    #[serde(default)]
+    image_info: ImageInfo,
+    #[serde(default)]
+    price_info: PriceInfo,
+    // CHANGED: This field can now be `null` in the JSON, so we use Option<u64>.
+    // serde will deserialize a number to `Some(n)` and `null` to `None`.
+    #[serde(default)]
+    number_of_reviews: Option<u64>,
+    #[serde(default)]
+    availability_status_v2: AvailabilityStatus,
+    #[serde(default)]
+    badges: Badges,
+}
+
+// Helper method to process raw product data into a clean record for the CSV
+impl Product {
+    fn to_csv_record(&self) -> Vec<String> {
+        vec![
+            self.name.clone(),
+            self.price_info.line_price_display.clone(),
+            self.image_info.thumbnail_url.clone(),
+            // CHANGED: Handle the Option. If it's None, default to 0.
+            self.number_of_reviews.unwrap_or(0).to_string(),
+            self.get_stock_status(),
+        ]
+    }
+
+    fn get_stock_status(&self) -> String {
+        if self.availability_status_v2.value == "OUT_OF_STOCK" {
+            return "0".to_string();
+        }
+
+        self.badges
+            .groups
+            .iter()
+            .find(|group| group.name == "urgency")
+            .and_then(|group| group.members.get(0))
+            .and_then(|member| {
+                let parts: Vec<&str> = member.text.split_whitespace().collect();
+                parts
+                    .iter()
+                    .find_map(|&part| part.parse::<i32>().ok())
+                    .map(|num| num.to_string())
+            })
+            .unwrap_or_else(|| "Available (quantity not specified)".to_string())
+    }
+}
+
+// --- No changes to the structs below this line ---
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PriceInfo {
+    #[serde(default)]
+    line_price_display: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ImageInfo {
+    #[serde(default)]
+    thumbnail_url: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct AvailabilityStatus {
+    #[serde(default)]
+    value: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct Badges {
+    #[serde(default)]
+    groups: Vec<BadgeGroup>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct BadgeGroup {
+    name: String,
+    #[serde(default)]
+    members: Vec<BadgeMember>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct BadgeMember {
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageData {
+    props: Props,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Props {
+    page_props: PageProps,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageProps {
+    initial_data: InitialData,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InitialData {
+    content_layout: ContentLayout,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContentLayout {
+    modules: Vec<Module>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Module {
+    r#type: String,
+    #[serde(default)]
+    configs: Option<Configs>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct Configs {
+    #[serde(rename = "itemStacks")]
+    item_stacks: Option<ItemStacksTop>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ItemStacksTop {
+    #[serde(rename = "paginationV2")]
+    pagination: Pagination,
+    #[serde(rename = "itemStacks")]
+    stacks: Vec<ItemStack>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ItemStack {
+    items: Vec<Product>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Pagination {
+    max_page: usize,
+}
+
+// --- Custom Error Type (No changes) ---
+#[derive(Debug)]
+enum ScraperError {
+    Request(reqwest::Error),
+    Csv(csv::Error),
+    Json(serde_json::Error),
+    Io(std::io::Error),
+    DataNotFound(String),
+    MaxRetriesExceeded(String),
+}
+
+impl fmt::Display for ScraperError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ScraperError::Request(e) => write!(f, "Request error: {}", e),
+            ScraperError::Csv(e) => write!(f, "CSV error: {}", e),
+            ScraperError::Json(e) => write!(f, "JSON parsing error: {}", e),
+            ScraperError::Io(e) => write!(f, "IO error: {}", e),
+            ScraperError::DataNotFound(s) => write!(f, "Data not found: {}", s),
+            ScraperError::MaxRetriesExceeded(url) => write!(f, "Max retries exceeded for URL: {}", url),
+        }
+    }
+}
+
+impl std::error::Error for ScraperError {}
+impl From<reqwest::Error> for ScraperError { fn from(err: reqwest::Error) -> Self { ScraperError::Request(err) } }
+impl From<csv::Error> for ScraperError { fn from(err: csv::Error) -> Self { ScraperError::Csv(err) } }
+impl From<serde_json::Error> for ScraperError { fn from(err: serde_json::Error) -> Self { ScraperError::Json(err) } }
+impl From<std::io::Error> for ScraperError { fn from(err: std::io::Error) -> Self { ScraperError::Io(err) } }
+
+
+/// NEW: Fetches a URL with a retry mechanism and exponential backoff.
+/// This makes the scraper resilient to temporary network errors or server issues.
+async fn fetch_with_retries(client: &Client, url: &str) -> Result<Response, ScraperError> {
+    for attempt in 0..=MAX_RETRIES {
+        match client.get(url).send().await {
+            Ok(response) => {
+                // Check if the response status is a server error (5xx) or client error (4xx) and retry if so.
+                // You might want to be more specific (e.g., only retry on 5xx).
+                if response.status().is_success() {
+                    return Ok(response);
+                } else {
+                    eprintln!(
+                        "Warning: Request to {} failed with status: {}. Retrying (attempt {}/{})",
+                        url, response.status(), attempt + 1, MAX_RETRIES
+                    );
+                }
+            }
+            Err(e) => {
+                 eprintln!(
+                    "Warning: Request to {} failed with error: {}. Retrying (attempt {}/{})",
+                    url, e, attempt + 1, MAX_RETRIES
+                );
+            }
+        }
+        
+        // Don't sleep on the last attempt
+        if attempt < MAX_RETRIES {
+            let delay = Duration::from_millis(RETRY_DELAY_MS * 2_u64.pow(attempt));
+            sleep(delay).await;
+        }
+    }
+
+    Err(ScraperError::MaxRetriesExceeded(url.to_string()))
+}
+
+/// Fetches a single page and parses it to extract products and pagination info.
+async fn scrape_page(
+    client: &Client,
+    base_url: &str,
+    page: usize,
+) -> Result<(Vec<Product>, Option<usize>), ScraperError> {
+    let page_url = format!("{}&page={}", base_url, page);
+    println!("Fetching page {}...", page);
+
+    // CHANGED: Use the new reliable fetch function
+    let response = fetch_with_retries(client, &page_url).await?;
+    let body = response.text().await?;
+
+    let document = Html::parse_document(&body);
+    let script_selector = Selector::parse("script#__NEXT_DATA__").unwrap();
+
+    let script_content = document
+        .select(&script_selector)
+        .next()
+        .map(|e| e.inner_html())
+        .ok_or_else(|| ScraperError::DataNotFound(format!("__NEXT_DATA__ script tag on page {}", page)))?;
+
+    // IMPORTANT: A JSON error here is now less likely to be from a network hiccup
+    // (since we retried) and more likely to be a genuine data format issue.
+    // The fix to `number_of_reviews` should prevent the original crash.
+    let data: PageData = serde_json::from_str(&script_content)?;
+
+    for module in data.props.page_props.initial_data.content_layout.modules {
+        if module.r#type == "ItemStack" {
+            if let Some(configs) = module.configs {
+                if let Some(item_stacks_top) = configs.item_stacks {
+                    let products = item_stacks_top.stacks.into_iter().flat_map(|s| s.items).collect();
+                    let max_pages = if page == 1 { Some(item_stacks_top.pagination.max_page) } else { None };
+                    return Ok((products, max_pages));
+                }
+            }
+        }
+    }
+
+    Err(ScraperError::DataNotFound(format!("ItemStack module on page {}", page)))
+}
+
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Base URL without the page parameter
+async fn main() -> Result<(), ScraperError> {
     let base_url = "https://www.walmart.com/global/seller/102616245/cp/shopall?povid=LFNav_Landing%20Page_sellerpage_cat_pill_shopall";
 
-    // Set up custom headers to mimic a browser
-    let mut headers = reqwest::header::HeaderMap::new();
+    let mut headers = HeaderMap::new();
     headers.insert(
-        reqwest::header::USER_AGENT,
+        USER_AGENT,
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             .parse()
             .unwrap(),
     );
 
-    let client = reqwest::Client::builder()
+    let client = Client::builder()
         .default_headers(headers)
+        .timeout(Duration::from_secs(30)) // Good practice to have a timeout
         .build()?;
 
-    // --- CSV Writer Setup ---
-    // Initialize the CSV writer before the loop
-    let mut wtr = Writer::from_path("products.csv")?;
-    wtr.write_record(&["Product Name", "Price", "Image URL", "Reviews Count", "Stock Status"])?;
-    // --- End CSV Writer Setup ---
+    // --- CSV Writer Setup with a Channel (No changes here) ---
+    let (tx, mut rx) = mpsc::channel::<Vec<Product>>(100);
+    
+    let writer_handle = tokio::spawn(async move {
+        let mut wtr = csv::Writer::from_path("products_optimized.csv")?;
+        wtr.write_record(&["Product Name", "Price", "Image URL", "Reviews Count", "Stock Status"])?;
+        
+        while let Some(products) = rx.recv().await {
+            for product in products {
+                wtr.write_record(&product.to_csv_record())?;
+            }
+        }
+        wtr.flush()?;
+        Ok::<(), ScraperError>(())
+    });
 
-    let mut current_page = 1;
-    let mut max_pages = 1; // Start with 1, will be updated after the first page is parsed
+    // --- Scrape First Page to Discover Total Pages ---
+    // This initial scrape also benefits from the retry logic
+    let (first_page_products, max_pages_option) = scrape_page(&client, base_url, 1).await?;
+    let max_pages = max_pages_option.ok_or_else(|| ScraperError::DataNotFound("max_pages info on page 1".to_string()))?;
+    
+    println!("Discovered {} total pages to scrape. Starting concurrent scraping...", max_pages);
+    tx.send(first_page_products).await.expect("CSV writer channel closed prematurely");
 
-    // Loop until we have scraped all pages
-    while current_page <= max_pages {
-        // Construct the URL for the current page
-        let page_url = format!("{}&page={}", base_url, current_page);
-        println!("--- Scraping page {} of {} ---", current_page, max_pages);
+    // --- Scrape Remaining Pages Concurrently (No changes in this block) ---
+    if max_pages > 1 {
+        let page_numbers_to_scrape = 2..=max_pages;
 
-        // Make an HTTP request to get the HTML content
-        let response = client.get(&page_url).send().await?.error_for_status()?;
-        let body = response.text().await?;
-
-        // Optional: Save HTML content locally for debugging
-        // let mut file = File::create(format!("output_page_{}.html", current_page))?;
-        // file.write_all(body.as_bytes())?;
-
-        // Parse the HTML
-        let document = Html::parse_document(&body);
-
-        // Define the selector for the script tag containing the data
-        let script_selector = Selector::parse("script#__NEXT_DATA__").unwrap();
-
-        // Find the script element and extract the JSON
-        if let Some(script_element) = document.select(&script_selector).next() {
-            let json_string = script_element.inner_html();
-            let json_data: Value = serde_json::from_str(&json_string)?;
-
-            let modules = json_data
-                .get("props")
-                .and_then(|p| p.get("pageProps"))
-                .and_then(|pp| pp.get("initialData"))
-                .and_then(|id| id.get("contentLayout"))
-                .and_then(|cl| cl.get("modules"))
-                .and_then(|m| m.as_array());
-
-            if let Some(modules_vec) = modules {
-                // Find the ItemStack module that contains the product list
-                for module in modules_vec {
-                    if module.get("type").and_then(|t| t.as_str()) == Some("ItemStack") {
-                        if let Some(configs) = module.get("configs") {
-                            
-                            // On the first page, find the total number of pages
-                            if current_page == 1 {
-                                if let Some(pagination_info) = configs.get("itemStacks").and_then(|is| is.get("paginationV2")) {
-                                    max_pages = pagination_info.get("maxPage").and_then(|mp| mp.as_u64()).unwrap_or(1) as usize;
-                                    println!("Discovered {} total pages to scrape.", max_pages);
-                                }
+        stream::iter(page_numbers_to_scrape)
+            .for_each_concurrent(CONCURRENT_REQUESTS, |page| {
+                let client = client.clone();
+                let tx = tx.clone();
+                async move {
+                    // This small delay is still good practice to be polite between batches
+                    sleep(Duration::from_millis(REQUEST_DELAY_MS)).await;
+                    
+                    match scrape_page(&client, base_url, page).await {
+                        Ok((products, _)) => {
+                            if tx.send(products).await.is_err() {
+                                eprintln!("Error: CSV writer channel closed.");
                             }
-
-                            // Navigate within the JSON to find the array of products
-                            if let Some(items) = configs
-                                .get("itemStacks")
-                                .and_then(|is| is.get("itemStacks"))
-                                .and_then(|isv| isv.get(0))
-                                .and_then(|is0| is0.get("items"))
-                                .and_then(|i| i.as_array())
-                            {
-                                println!("Found {} items on this page.", items.len());
-                                // Loop through all products found in the JSON
-                                for product in items {
-                                    let product_name = product["name"].as_str().unwrap_or("Name not found").to_string();
-                                    
-                                    let price = product["priceInfo"]["linePriceDisplay"].as_str().unwrap_or("Price not found").to_string();
-                                    
-                                    let image_url = product["imageInfo"]["thumbnailUrl"].as_str().unwrap_or("Image URL not found").to_string();
-                                    
-                                    let reviews_count = product["numberOfReviews"].as_u64().unwrap_or(0).to_string();
-
-                                    let stock_status = if product["availabilityStatusV2"]["value"].as_str() == Some("OUT_OF_STOCK") {
-                                        "0".to_string()
-                                    } else {
-                                        let urgency_text = product["badges"]["groups"]
-                                            .as_array()
-                                            .and_then(|groups| {
-                                                groups.iter().find_map(|group| {
-                                                    if group["name"].as_str() == Some("urgency") {
-                                                        group["members"][0]["text"].as_str().map(String::from)
-                                                    } else {
-                                                        None
-                                                    }
-                                                })
-                                            });
-
-                                        if let Some(text) = urgency_text {
-                                            let parts: Vec<&str> = text.split_whitespace().collect();
-                                            parts.iter()
-                                                 .find_map(|&part| part.parse::<i32>().ok())
-                                                 .map(|num| num.to_string())
-                                                 .unwrap_or_else(|| text)
-                                        } else {
-                                            "Available (quantity not specified)".to_string()
-                                        }
-                                    };
-
-                                    // Write the extracted data to the CSV
-                                    wtr.write_record(&[
-                                        &product_name,
-                                        &price,
-                                        &image_url,
-                                        &reviews_count,
-                                        &stock_status,
-                                    ])?;
-                                }
-                            }
-                            // After processing the item stack for this page, we can stop searching through modules
-                            break; 
+                        }
+                        Err(e) => {
+                            // This error message now appears only after all retries have failed.
+                            eprintln!("Failed to scrape page {}: {}", page, e);
                         }
                     }
                 }
-            }
-        } else {
-            println!("Could not find the __NEXT_DATA__ script tag on page {}.", current_page);
-        }
-
-        // Increment the page counter
-        current_page += 1;
-
-        // Add a polite delay to avoid overwhelming the server, only if it's not the last page
-        if current_page <= max_pages {
-            println!("Waiting for 2 seconds before next request...");
-            sleep(Duration::from_secs(2)).await;
-        }
+            })
+            .await;
     }
 
-    wtr.flush()?; // Make sure all data is written to the file
+    // --- Finalization (No changes here) ---
+    drop(tx);
+    writer_handle.await.unwrap()?;
+
     println!("\n--- Scraping finished ---");
-    println!("Data for all pages saved to products.csv");
+    println!("Data for all {} pages saved to products_optimized.csv", max_pages);
 
     Ok(())
 }
