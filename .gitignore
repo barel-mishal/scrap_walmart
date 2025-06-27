@@ -16,3 +16,8 @@ __pycache__/
 # Environment variables
 .env
 
+# Rust
+Cargo.lock
+Cargo.toml
+Cargo.toml.orig
+target/
