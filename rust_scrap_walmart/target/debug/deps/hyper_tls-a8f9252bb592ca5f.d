@@ -1,0 +1,7 @@
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/debug/deps/libhyper_tls-a8f9252bb592ca5f.rmeta: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/client.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/stream.rs
+
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/debug/deps/hyper_tls-a8f9252bb592ca5f.d: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/client.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/stream.rs
+
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/lib.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/client.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/stream.rs:
