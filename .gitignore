@@ -1,23 +1,36 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Python
+# Ignore Python virtual environments
+.venv/
 __pycache__/
 *.pyc
 
-# Environment variables
-.env
+# Ignore Rust build artifacts
+/target/
+*.rs.bk
 
-# Rust
+# Ignore Python-specific files
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.eggs/
+*.env
+*.env.example
+.python-version
+
+# Ignore Rust-specific files
 Cargo.lock
-Cargo.toml
-Cargo.toml.orig
-target/
+*.rlib
+
+# Ignore output and debug files
+debug_html/
+output/
+output_csvs/
+*.html
+*.csv
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Git-specific files
+.git/

@@ -13,6 +13,8 @@ from scraper_logic import (
     prepare_base_url
 )
 
+import walmart_scraper;
+
 MAX_WORKERS = 4 
 MAX_ATTEMPTS_PER_URL = 3
 REQUEST_DISPATCH_INTERVAL = 0.25 
@@ -127,16 +129,9 @@ def run_scraping_task(base_url: str, task_id: str):
 def start_scrape():
     user_url = request.json.get('url')
     if not user_url: return jsonify({'error': 'URL is required'}), 400
-    task_id = str(uuid.uuid4())
     base_url = prepare_base_url(user_url)
-    tasks[task_id] = {'status': 'pending'}
-    thread = threading.Thread(target=run_scraping_task, args=(base_url, task_id))
-    thread.start()
-    return jsonify({'task_id': task_id}), 202
-
-@app.route('/status/<task_id>')
-def get_status(task_id):
-    return jsonify(tasks.get(task_id, {'status': 'not_found'}))
+    walmart_scraper.walmart_scrap(base_url)  # Example usage of the Rust function
+    return jsonify({'Finish': "Finish"}), 202
 
 @app.route('/download/<filename>')
 def download_file(filename):
