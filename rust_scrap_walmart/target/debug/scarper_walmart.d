@@ -1,1 +1,0 @@
-/Users/barel/projects/walmart_initial_scraper/rust_scrap_walmart/target/debug/scarper_walmart: /Users/barel/projects/walmart_initial_scraper/rust_scrap_walmart/src/lib.rs /Users/barel/projects/walmart_initial_scraper/rust_scrap_walmart/src/main.rs
