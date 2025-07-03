@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 
 # Ignore Rust build artifacts
-/target/
+target/
 *.rs.bk
 
 # Ignore Python-specific files
@@ -31,6 +31,3 @@ output_csvs/
 # Ignore system files
 .DS_Store
 Thumbs.db
-
-# Ignore Git-specific files
-.git/
