@@ -24,9 +24,12 @@ Cargo.lock
 # Ignore output and debug files
 debug_html/
 python_scraper_api/output/
+output/
+output_csvs/
+*.html
+*.csv
+debug_page.html
 
 # Ignore system files
 .DS_Store
 Thumbs.db
-
-**/debug_page.html
