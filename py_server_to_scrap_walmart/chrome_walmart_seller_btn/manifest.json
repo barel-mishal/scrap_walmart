@@ -4,7 +4,7 @@
   "version": "2.0",
   "description": "Adds an 'Export to CSV' button to Walmart seller pages.",
   "permissions": ["downloads"],
-  "host_permissions": ["http://127.0.0.1:5000/*"],
+  "host_permissions": ["http://127.0.0.1:5003/*"],
   "background": {
     "service_worker": "background.js"
   },
