@@ -28,3 +28,5 @@ python_scraper_api/output/
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+**/debug_page.html
