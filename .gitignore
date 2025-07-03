@@ -28,7 +28,8 @@ output/
 output_csvs/
 *.html
 *.csv
-debug_page.html
+*debug_page.html
+chrome_extension/debug_page.html
 
 # Ignore system files
 .DS_Store
