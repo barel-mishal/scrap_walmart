@@ -1,0 +1,7 @@
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/debug/deps/atomic_waker-4384bbcbf85bc3af.d: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/atomic-waker-1.1.2/src/lib.rs
+
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/debug/deps/libatomic_waker-4384bbcbf85bc3af.rlib: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/atomic-waker-1.1.2/src/lib.rs
+
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/debug/deps/libatomic_waker-4384bbcbf85bc3af.rmeta: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/atomic-waker-1.1.2/src/lib.rs
+
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/atomic-waker-1.1.2/src/lib.rs:

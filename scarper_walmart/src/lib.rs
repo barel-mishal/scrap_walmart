@@ -1,4 +1,8 @@
 // src/lib.rs
+use pyo3::{prelude::*, wrap_pyfunction};
+use tokio; 
+use uuid::Uuid;
+
 
 use futures::stream::{self, StreamExt};
 use reqwest::header::{HeaderMap, USER_AGENT};
@@ -8,7 +12,6 @@ use serde::Deserialize;
 use std::fmt;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
-
 // --- Configuration ---
 const CONCURRENT_REQUESTS: usize = 10;
 const REQUEST_DELAY_MS: u64 = 500;
@@ -71,7 +74,7 @@ struct PriceInfo {
     #[serde(default)]
     line_price_display: String,
 }
-
+// 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct ImageInfo {
@@ -268,12 +271,15 @@ async fn scrape_page(
 }
 
 
-/// The main public function that runs the entire scraping process.
-/// זו הפונקציה הראשית של הספרייה שלנו. הוספנו 'pub' כדי שנוכל לקרוא לה מבחוץ
-pub async fn run_scraper() -> Result<(), ScraperError> {
-    let base_url = "https://www.walmart.com/global/seller/102616245/cp/shopall?povid=LFNav_Landing%20Page_sellerpage_cat_pill_shopall";
-    let output_file = "products.csv";
-
+pub async fn run_scraper(walmart_seller_site: &str) -> Result<String, ScraperError> {
+    // --- שינוי: יצירת שם קובץ ייחודי ---
+    // 1. נייצר UUID חדש וייחודי בכל הרצה של הפונקציה
+    let unique_id = Uuid::new_v4();
+    // 2. נבנה את שם הקובץ עם ה-UUID שיצרנו. למשל: "products_123e4567-e89b-12d3-a456-426614174000.csv"
+    let output_file = format!("products_{}.csv", unique_id);
+    
+    // מכאן והלאה הקוד ממשיך כמעט ללא שינוי, רק משתמש בשם הקובץ החדש
+    
     let mut headers = HeaderMap::new();
     headers.insert(
         USER_AGENT,
@@ -290,8 +296,11 @@ pub async fn run_scraper() -> Result<(), ScraperError> {
     // --- CSV Writer Setup with a Channel ---
     let (tx, mut rx) = mpsc::channel::<Vec<Product>>(100);
     
+    // חשוב לשים לב: אנחנו מעבירים עותק (clone) של שם הקובץ לתוך ה-task
+    let writer_output_file = output_file.clone();
     let writer_handle = tokio::spawn(async move {
-        let mut wtr = csv::Writer::from_path(output_file)?;
+        // הכותב ישתמש בשם הקובץ הייחודי
+        let mut wtr = csv::Writer::from_path(writer_output_file)?;
         wtr.write_record(&["Product Name", "Price", "Image URL", "Reviews Count", "Stock Status"])?;
         
         while let Some(products) = rx.recv().await {
@@ -304,13 +313,14 @@ pub async fn run_scraper() -> Result<(), ScraperError> {
     });
 
     // --- Scrape First Page to Discover Total Pages ---
-    let (first_page_products, max_pages_option) = scrape_page(&client, base_url, 1).await?;
+    let (first_page_products, max_pages_option) = scrape_page(&client, walmart_seller_site, 1).await?;
     let max_pages = max_pages_option.ok_or_else(|| ScraperError::DataNotFound("max_pages info on page 1".to_string()))?;
     
     println!("Discovered {} total pages to scrape. Starting concurrent scraping...", max_pages);
     tx.send(first_page_products).await.expect("CSV writer channel closed prematurely");
 
     // --- Scrape Remaining Pages Concurrently ---
+    // ... (הלוגיקה של הגריפה המקבילית נשארת זהה) ...
     if max_pages > 1 {
         let page_numbers_to_scrape = 2..=max_pages;
 
@@ -321,7 +331,7 @@ pub async fn run_scraper() -> Result<(), ScraperError> {
                 async move {
                     sleep(Duration::from_millis(REQUEST_DELAY_MS)).await;
                     
-                    match scrape_page(&client, base_url, page).await {
+                    match scrape_page(&client, walmart_seller_site, page).await {
                         Ok((products, _)) => {
                             if tx.send(products).await.is_err() {
                                 eprintln!("Error: CSV writer channel closed.");
@@ -337,8 +347,7 @@ pub async fn run_scraper() -> Result<(), ScraperError> {
     }
 
     // --- Finalization ---
-    drop(tx); // Close the channel to signal the writer to finish.
-    // Wait for the writer task to complete and handle any potential errors.
+    drop(tx); 
     match writer_handle.await {
         Ok(Ok(_)) => {},
         Ok(Err(e)) => return Err(e),
@@ -346,7 +355,32 @@ pub async fn run_scraper() -> Result<(), ScraperError> {
     }
 
     println!("\n--- Scraping finished ---");
+    // נדפיס למשתמש את שם הקובץ הייחודי שנוצר
     println!("Data for all {} pages saved to {}", max_pages, output_file);
 
+    // --- שינוי: החזרת שם הקובץ החדש ---
+    // output_file הוא כבר מסוג String, אז אין צורך ב-to_string()
+    Ok(output_file)
+}
+
+// --- Python Bindings ---
+#[pyfunction]
+// CHANGE THIS LINE: The return type must be PyResult<String>
+fn rs_run_scraper(url: String) -> PyResult<String> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+    match rt.block_on(run_scraper(&url)) {
+        // CHANGE THIS LINE: Since 's' is a String and the function returns
+        // PyResult<String>, you just return it directly inside Ok().
+        // No need for .into().
+        Ok(s) => Ok(s), 
+        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e.to_string())),
+    }
+}
+
+#[pymodule]
+fn scarper_walmart(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(rs_run_scraper, m)?)?;
     Ok(())
 }

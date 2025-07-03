@@ -1,0 +1,9 @@
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/release/deps/potential_utf-150c0233df9b8d07.d: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/uchar.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/ustr.rs
+
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/release/deps/libpotential_utf-150c0233df9b8d07.rlib: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/uchar.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/ustr.rs
+
+/Users/barel/projects/walmart_initial_scraper/scarper_walmart/target/release/deps/libpotential_utf-150c0233df9b8d07.rmeta: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/uchar.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/ustr.rs
+
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/lib.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/uchar.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.2/src/ustr.rs:
