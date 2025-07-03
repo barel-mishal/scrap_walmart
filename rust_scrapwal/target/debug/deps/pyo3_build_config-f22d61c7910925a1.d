@@ -1,0 +1,14 @@
+/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/deps/pyo3_build_config-f22d61c7910925a1.d: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config-file.txt /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config.txt
+
+/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/deps/libpyo3_build_config-f22d61c7910925a1.rlib: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config-file.txt /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config.txt
+
+/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/deps/libpyo3_build_config-f22d61c7910925a1.rmeta: /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config-file.txt /Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config.txt
+
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs:
+/Users/barel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs:
+/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config-file.txt:
+/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.25.1
+# env-dep:OUT_DIR=/Users/barel/projects/walmart_initial_scraper/rust_scrapwal/target/debug/build/pyo3-build-config-e8330796b148da23/out
