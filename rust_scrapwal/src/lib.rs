@@ -1,7 +1,8 @@
 // src/lib.rs
 use pyo3::{prelude::*, wrap_pyfunction};
 use tokio; 
-use uuid::Uuid;
+use regex::Regex;
+use chrono;
 
 
 use futures::stream::{self, StreamExt};
@@ -12,6 +13,8 @@ use serde::Deserialize;
 use std::fmt;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
+use std::fs;
+use std::path::Path;
 // --- Configuration ---
 const CONCURRENT_REQUESTS: usize = 10;
 const REQUEST_DELAY_MS: u64 = 500;
@@ -267,35 +270,39 @@ async fn scrape_page(
     Err(ScraperError::DataNotFound(format!("ItemStack module on page {}", page)))
 }
 
+fn extract_seller_id(url: &str) -> String {
+    let re = Regex::new(r"/seller/(\d+)").unwrap();
+    if let Some(caps) = re.captures(url) {
+        if let Some(seller_id) = caps.get(1) {
+            return seller_id.as_str().to_string();
+        }
+    }
+    "unknown_seller".to_string()
+}
 
-pub async fn run_scraper(walmart_seller_site: &str) -> Result<String, ScraperError> {
-    // --- שינוי: יצירת שם קובץ ייחודי ---
-    let unique_id = Uuid::new_v4();
-    let output_file = format!("products_{}.csv", unique_id);
-        
+async fn setup_client() -> Result<Client, ScraperError> {
     let mut headers = HeaderMap::new();
     headers.insert(
         USER_AGENT,
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             .parse()
-            .unwrap(),
+            .unwrap(), // This is generally safe for a static, valid header value
     );
-
     let client = Client::builder()
         .default_headers(headers)
         .timeout(Duration::from_secs(30))
         .build()?;
+    Ok(client)
+}
 
-    // --- CSV Writer Setup with a Channel ---
+async fn spawn_csv_writer_task(
+    output_file: &Path,
+) -> Result<(mpsc::Sender<Vec<Product>>, tokio::task::JoinHandle<Result<(), ScraperError>>), ScraperError> {
     let (tx, mut rx) = mpsc::channel::<Vec<Product>>(100);
-    
-    // חשוב לשים לב: אנחנו מעבירים עותק (clone) של שם הקובץ לתוך ה-task
-    let writer_output_file = output_file.clone();
+    let writer_output_file = output_file.to_path_buf();
     let writer_handle = tokio::spawn(async move {
-        // הכותב ישתמש בשם הקובץ הייחודי
         let mut wtr = csv::Writer::from_path(writer_output_file)?;
         wtr.write_record(&["Product Name", "Price", "Image URL", "Reviews Count", "Stock Status"])?;
-        
         while let Some(products) = rx.recv().await {
             for product in products {
                 wtr.write_record(&product.to_csv_record())?;
@@ -304,52 +311,90 @@ pub async fn run_scraper(walmart_seller_site: &str) -> Result<String, ScraperErr
         wtr.flush()?;
         Ok::<(), ScraperError>(())
     });
+    Ok((tx, writer_handle))
+}
 
+async fn scrape_all_pages(
+    client: &Client,
+    base_url: &str,
+    tx: mpsc::Sender<Vec<Product>>,
+) -> Result<usize, ScraperError> {
     // --- Scrape First Page to Discover Total Pages ---
-    let (first_page_products, max_pages_option) = scrape_page(&client, walmart_seller_site, 1).await?;
+    let (first_page_products, max_pages_option) = scrape_page(client, base_url, 1).await?;
     let max_pages = max_pages_option.ok_or_else(|| ScraperError::DataNotFound("max_pages info on page 1".to_string()))?;
     
     println!("Discovered {} total pages to scrape. Starting concurrent scraping...", max_pages);
-    tx.send(first_page_products).await.expect("CSV writer channel closed prematurely");
+    if tx.send(first_page_products).await.is_err() {
+        eprintln!("Error: CSV writer channel closed prematurely before sending first page.");
+    }
 
     // --- Scrape Remaining Pages Concurrently ---
     if max_pages > 1 {
         let page_numbers_to_scrape = 2..=max_pages;
-
         stream::iter(page_numbers_to_scrape)
             .for_each_concurrent(CONCURRENT_REQUESTS, |page| {
                 let client = client.clone();
                 let tx = tx.clone();
                 async move {
                     sleep(Duration::from_millis(REQUEST_DELAY_MS)).await;
-                    
-                    match scrape_page(&client, walmart_seller_site, page).await {
+                    match scrape_page(&client, base_url, page).await {
                         Ok((products, _)) => {
-                            if tx.send(products).await.is_err() {
-                                eprintln!("Error: CSV writer channel closed.");
+                            if !products.is_empty() && tx.send(products).await.is_err() {
+                                eprintln!("Error: CSV writer channel closed while sending page {}.", page);
                             }
                         }
-                        Err(e) => {
-                            eprintln!("Failed to scrape page {}: {}", page, e);
-                        }
+                        Err(e) => eprintln!("Failed to scrape page {}: {}", page, e),
                     }
                 }
             })
             .await;
     }
+    Ok(max_pages)
+}
+
+pub async fn run_scraper(walmart_seller_site: &str) -> Result<String, ScraperError> {
+    // --- Setup output directory and file path ---
+    let output_dir = Path::new("main_output").join("csv");
+    fs::create_dir_all(&output_dir).map_err(ScraperError::Io)?;
+    
+    let seller_name = extract_seller_id(walmart_seller_site);
+    let now = chrono::Local::now();
+    let timestamp = now.format("%Y%m%d_%H%M%S");
+
+    let file_name = format!("products_{}_{}.csv", seller_name, timestamp);
+    let output_file = output_dir.join(&file_name);
+    let output_file_str = output_file.to_str()
+        .ok_or_else(|| ScraperError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Invalid UTF-8 in output path")))?
+        .to_string();
+
+    // --- Initialize client and CSV writer task ---
+    let client = setup_client().await?;
+    let (tx, writer_handle) = spawn_csv_writer_task(&output_file).await?;
+
+    // --- Run the scraper ---
+    let max_pages = scrape_all_pages(&client, walmart_seller_site, tx).await?;
 
     // --- Finalization ---
-    drop(tx); 
+    // The sender `tx` is dropped here, closing the channel. The writer task will finish.
     match writer_handle.await {
-        Ok(Ok(_)) => {},
-        Ok(Err(e)) => return Err(e),
-        Err(e) => eprintln!("Writer task panicked: {}", e),
+        Ok(Ok(_)) => {
+            println!("
+--- Scraping finished ---");
+            println!("Data for all {} pages saved to {}", max_pages, output_file_str);
+            Ok(output_file_str)
+        },
+        Ok(Err(e)) => {
+            eprintln!("CSV writer task failed: {}", e);
+            Err(e)
+        },
+        Err(e) => {
+            eprintln!("Writer task panicked: {}", e);
+            Err(ScraperError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Writer task panicked",
+            )))
+        }
     }
-
-    println!("\n--- Scraping finished ---");
-    println!("Data for all {} pages saved to {}", max_pages, output_file);
-
-    Ok(output_file)
 }
 
 // --- Python Bindings ---

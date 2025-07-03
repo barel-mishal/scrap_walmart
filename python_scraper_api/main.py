@@ -1,4 +1,3 @@
-
 import os
 
 from dotenv import load_dotenv
@@ -8,10 +7,6 @@ import os, uuid
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from urllib.parse import quote
-
-from scraper_logic import (
-    prepare_base_url
-)
 
 import rust_scrapwal
 
@@ -27,24 +22,37 @@ app.config['OUTPUT_FOLDER'] = 'output'
 tasks = {}
 
 
+@app.route('/')
+def index():
+    return jsonify({
+        'message': 'Welcome to the Walmart Scraper API!',
+        'description': 'This API allows you to scrape product data from Walmart seller pages.',
+        'endpoints': {
+            '/scrape': 'POST with { "url": "walmart_seller_url", "use_scrapedo": "true/false" } to start scraping.',
+            '/status/<task_id>': 'GET to check the status of a scraping task.',
+            '/download/<filename>': 'GET to download the resulting CSV file.'
+        }
+    })
+
 
 @app.route('/scrape', methods=['POST'])
 def start_scrape():
     user_url = request.json.get('url')
+    use_scrapedo = request.json.get('use_scrapedo', False)
     if not user_url: return jsonify({'error': 'URL is required'}), 400
     
     task_id = str(uuid.uuid4())
-    base_url = prepare_base_url(user_url)
+    
+    url_to_scrape = user_url
+    if use_scrapedo:
+        url_to_scrape = prepare_base_url(user_url)
 
-    # THIS IS THE ONLY LINE YOU NEED TO ADD:
-    # Initialize an empty dictionary for the new task_id.
     tasks[task_id] = {}
     
-    # Now the following lines will work correctly because tasks[task_id] exists.
     tasks[task_id]['status'] = 'processing'
     tasks[task_id]['progress'] = 'Scraper is running...'
 
-    file_name = rust_scrapwal.rs_run_scraper(base_url) # Your original function call
+    file_name = rust_scrapwal.rs_run_scraper(url_to_scrape) 
     
     tasks[task_id]['status'] = 'completed'
     tasks[task_id]['progress'] = 'Scraping finished successfully.'

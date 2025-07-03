@@ -23,10 +23,7 @@ Cargo.lock
 
 # Ignore output and debug files
 debug_html/
-output/
-output_csvs/
-*.html
-*.csv
+python_scraper_api/output/
 
 # Ignore system files
 .DS_Store
