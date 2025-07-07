@@ -1,36 +1,55 @@
-# Ignore Python virtual environments
-.venv/
+# Python
 __pycache__/
-*.pyc
-
-# Ignore Rust build artifacts
-**/target/
-*.rs.bk
-
-# Ignore Python-specific files
-*.pyo
-*.pyd
-*.pdb
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.env
+pip-log.txt
+pip-delete-this-directory.txt
 *.egg-info/
 *.eggs/
-*.env
-*.env.example
-.python-version
 
-# Ignore Rust-specific files
+# Rust
+/target/
+**/target/
 Cargo.lock
+*.pdb
+*.rs.bk
 *.rlib
 
-# Ignore output and debug files
-debug_html/
-python_scraper_api/output/
+# Output directories
 output/
-output_csvs/
-*.html
+main_output/
+performance_results/
+debug_html/
 *.csv
-*debug_page.html
-chrome_extension/debug_page.html
+*.json
+*.html
 
-# Ignore system files
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Chrome extension
+chrome_extension/node_modules/
