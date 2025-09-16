@@ -54,4 +54,4 @@ maturin develop
 Your Walmart scraper is **production-ready** and successfully uploaded to:
 **https://github.com/barel-mishal/scrap_walmart**
 
-The code maintains the original **124.9 products/sec** performance while being clean, documented, and GitHub-ready! 🎉
+The code maintains the original **124.9 products/sec** performance while being clean, documented, and GitHub-ready! 🎉 
