@@ -111,3 +111,7 @@ CSV with columns: Name, Price, Stock Status, Reviews, Image URL, Availability
 - HTTP connection reuse
 
 Built with ❤️ using Rust for speed and Python for convenience.
+
+## 📋 Documentation
+
+- [Commit History](COMMIT_HISTORY.md) - Documentation of commit purposes and project history
